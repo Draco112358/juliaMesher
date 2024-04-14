@@ -22,7 +22,7 @@ function find_box_dimensions(dict_meshes::Dict)
     global_min_x, global_min_y, global_min_z = prevfloat(typemax(Float64)), prevfloat(typemax(Float64)), prevfloat(typemax(Float64))
     global_max_x, global_max_y, global_max_z = -prevfloat(typemax(Float64)), -prevfloat(typemax(Float64)), -prevfloat(typemax(Float64))
 
-    for (key,value) in dict_meshes
+    for (key, value) in dict_meshes
         #println(dict_meshes)
         minx, maxx, miny, maxy, minz, maxz = find_mins_maxs(value)
         global_min_x = min(global_min_x, minx)
@@ -50,28 +50,37 @@ end
 
 
 function find_sizes(number_of_cells_x::Int, number_of_cells_y::Int, number_of_cells_z::Int, geometry_descriptor::Dict)
-    
+
     @assert number_of_cells_x isa Int
     @assert number_of_cells_y isa Int
     @assert number_of_cells_z isa Int
     @assert geometry_descriptor isa Dict
-    @assert length(geometry_descriptor)==6
+    @assert length(geometry_descriptor) == 6
 
     # minimum_vertex_coordinates = [geometry_descriptor['meshXmin'] * 1e-3, geometry_descriptor['meshYmin'] * 1e-3,
     #           geometry_descriptor['meshZmin'] * 1e-3]
     # # max_v = [minmax.meshXmax minmax.meshYmax minmax.meshZmax]*1e-3;
     xv = LinRange(geometry_descriptor["meshXmin"] * 1e-3, geometry_descriptor["meshXmax"] * 1e-3,
-                     number_of_cells_x + 1)
+        number_of_cells_x + 1)
     yv = LinRange(geometry_descriptor["meshYmin"] * 1e-3, geometry_descriptor["meshYmax"] * 1e-3,
-                     number_of_cells_y + 1)
+        number_of_cells_y + 1)
     zv = LinRange(geometry_descriptor["meshZmin"] * 1e-3, geometry_descriptor["meshZmax"] * 1e-3,
-                     number_of_cells_z + 1)
+        number_of_cells_z + 1)
 
     return abs(xv[3] - xv[2]), abs(yv[3] - yv[2]), abs(zv[3] - zv[2])#, minimum_vertex_coordinates
 end
 
-function dump_json_data(filename,n_materials,o_x::Float64,o_y::Float64,o_z::Float64,cs_x::Float64,cs_y::Float64,cs_z::Float64,nc_x,nc_y,nc_z,matr,id_to_material)
-    
+function slicematrix(A::AbstractMatrix{T}) where {T}
+    m, n = size(A)
+    B = Vector{T}[Vector{T}(undef, n) for _ in 1:m]
+    for i in 1:m
+        B[i] .= A[i, :]
+    end
+    return B
+end
+
+function dump_json_data(filename, n_materials, o_x::Float64, o_y::Float64, o_z::Float64, cs_x::Float64, cs_y::Float64, cs_z::Float64, nc_x, nc_y, nc_z, matr, id_to_material)
+
     #print("Serialization to:",filename)
     @assert cs_x isa Float64
     @assert cs_y isa Float64
@@ -81,26 +90,26 @@ function dump_json_data(filename,n_materials,o_x::Float64,o_y::Float64,o_z::Floa
     @assert o_z isa Float64
 
     origin = Dict("origin_x" => o_x, "origin_y" => o_y, "origin_z" => o_z)
-    
-    n_cells = Dict("n_cells_x" => convert(Float64, nc_x),"n_cells_y"=> convert(Float64, nc_y),"n_cells_z"=> convert(Float64, nc_z))
 
-    cell_size = Dict("cell_size_x" => cs_x,"cell_size_y" => cs_y,"cell_size_z" => cs_z)
+    n_cells = Dict("n_cells_x" => convert(Float64, nc_x), "n_cells_y" => convert(Float64, nc_y), "n_cells_z" => convert(Float64, nc_z))
+
+    cell_size = Dict("cell_size_x" => cs_x, "cell_size_y" => cs_y, "cell_size_z" => cs_z)
 
     materials = Dict()
     for element in id_to_material
-        materials[element.first]=id_to_material[element.first]
+        materials[element.first] = id_to_material[element.first]
     end
-        
+
     mesher_matrices_dict = Dict()
 
-    
+
     for c in range(1, n_materials)
         x = []
         for i in range(1, nc_x)
-            push!(x, slicematrix(matr[c,i,:,:]))
+            push!(x, slicematrix(matr[c, i, :, :]))
         end
         mesher_matrices_dict[id_to_material[c]] = x
-        
+
         # for matrix in eachslice(matr2, dims=1)
         #     #@assert count in keys(id_to_material)
         #     println("->")
@@ -111,13 +120,58 @@ function dump_json_data(filename,n_materials,o_x::Float64,o_y::Float64,o_z::Floa
         # end
     end
 
-    
+
     #@assert count == n_materials+1
-    json_dict = Dict("n_materials" => n_materials,"materials" => materials, "origin" => origin , "cell_size" => cell_size, "n_cells" => n_cells, "mesher_matrices" => mesher_matrices_dict)
+    json_dict = Dict("n_materials" => n_materials, "materials" => materials, "origin" => origin, "cell_size" => cell_size, "n_cells" => n_cells, "mesher_matrices" => mesher_matrices_dict)
     return json_dict
 end
 
-        
+function existsThisBrick(brick_coords::CartesianIndex, mesher_matrices::Dict)
+    for material in keys(mesher_matrices)
+        if 1 <= brick_coords[1] <= length(mesher_matrices[material])
+            if 1 <= brick_coords[2] <= length(mesher_matrices[material][brick_coords[1]])
+                if 1 <= brick_coords[3] <= length(mesher_matrices[material][brick_coords[1]][brick_coords[2]])
+                    return mesher_matrices[material][brick_coords[1]][brick_coords[2]][brick_coords[3]]
+                end
+            end
+        end
+    end
+    return false
+end
+
+function is_brick_valid(brick_coords::CartesianIndex, mesher_matrices::Dict)
+    brickDown = existsThisBrick(CartesianIndex(brick_coords[1]-1, brick_coords[2], brick_coords[3]), mesher_matrices)
+    brickUp = existsThisBrick(CartesianIndex(brick_coords[1]+1, brick_coords[2], brick_coords[3]), mesher_matrices)
+    if(!brickDown && !brickUp)
+        return false
+    end
+    brickDown = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2]-1, brick_coords[3]), mesher_matrices)
+    brickUp = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2]+1, brick_coords[3]), mesher_matrices)
+    if(!brickDown && !brickUp)
+        return false
+    end
+    brickDown = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2], brick_coords[3]-1), mesher_matrices)
+    brickUp = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2], brick_coords[3]+1), mesher_matrices)
+    if(!brickDown && !brickUp)
+        return false
+    end
+    return true
+end
+
+function is_mesh_valid(mesher_matrices::Dict)
+    for material in keys(mesher_matrices)
+        for brick_coords in CartesianIndices((1:length(mesher_matrices[material]), 1:length(mesher_matrices[material][1]), 1:length(mesher_matrices[material][1][1])))
+            if(mesher_matrices[material][brick_coords[1]][brick_coords[2]][brick_coords[3]])
+                if(!is_brick_valid(brick_coords, mesher_matrices))
+                    return false
+                end
+            end
+        end
+    end
+    return true
+end
+
+
 function doMeshing(dictData::Dict)
 
     meshes = Dict()
@@ -127,19 +181,19 @@ function doMeshing(dictData::Dict)
         mesh_stl = geometry["STL"]
         #@assert mesh_id not in meshes
         open("/tmp/stl.stl", "w") do write_file
-            write(write_file,mesh_stl)
+            write(write_file, mesh_stl)
         end
         mesh_stl = load("/tmp/stl.stl")
         mesh_stl_converted = convert(Meshes.Mesh, mesh_stl)
-    
+
         #mesh_stl_converted = Meshes.Polytope(3,3,mesh_stl)
         #@assert mesh_stl_converted isa Mesh
         meshes[mesh_id] = mesh_stl_converted
         Base.Filesystem.rm("/tmp/stl.stl", force=true)
     end
-    
+
     geometry_x_bound, geometry_y_bound, geometry_z_bound, geometry_data_object = find_box_dimensions(meshes)
-    
+
 
     # grids grainx
     # assert type(dictData['quantum'])==list
@@ -163,50 +217,50 @@ function doMeshing(dictData::Dict)
         n_of_cells_x = ceil(Int, geometry_x_bound / quantum_x)
         n_of_cells_y = ceil(Int, geometry_y_bound / quantum_y)
         n_of_cells_z = ceil(Int, geometry_z_bound / quantum_z)
-        
 
-        
+
+
         #print("GRID:",n_of_cells_x, n_of_cells_y, n_of_cells_z)
-        
+
         cell_size_x, cell_size_y, cell_size_z = find_sizes(n_of_cells_x, n_of_cells_y, n_of_cells_z, geometry_data_object)
-        
+
         #precision = 0.1
         #print("CELL SIZE AFTER ADJUSTEMENTS:",(cell_size_x), (cell_size_y), (cell_size_z))
         # if __debug__:
-            
+
         #     for size,quantum in zip([cell_size_x,cell_size_y,cell_size_z],[quantum_x,quantum_y,quantum_z]):
         #         print(abs(size*(1/precision) - quantum),precision)
         #         assert abs(size*(1/precision) - quantum)<=precision
-                
 
-        
+
+
         n_materials = length(dictData["STLList"])
-        
-        mesher_output = fill(false, (n_materials,n_of_cells_x, n_of_cells_y, n_of_cells_z))
+
+        mesher_output = fill(false, (n_materials, n_of_cells_x, n_of_cells_y, n_of_cells_z))
 
         mapping_ids_to_materials = Dict()
 
         counter_stl_files = 1
         for mesh_id in meshes
             #@assert meshes[mesh_id] isa Mesh
-            mesher_output[counter_stl_files,:,:,:] = voxelize(n_of_cells_x, n_of_cells_y, n_of_cells_z, meshes[mesh_id.first], geometry_data_object)
+            mesher_output[counter_stl_files, :, :, :] = voxelize(n_of_cells_x, n_of_cells_y, n_of_cells_z, meshes[mesh_id.first], geometry_data_object)
 
-            mapping_ids_to_materials[counter_stl_files]=mesh_id.first
-            counter_stl_files+=1
+            mapping_ids_to_materials[counter_stl_files] = mesh_id.first
+            counter_stl_files += 1
         end
 
-        id_mats_keep=zeros(Int64, n_materials)
-        
-        id_mats_keep[1]=0
-        
+        id_mats_keep = zeros(Int64, n_materials)
+
+        id_mats_keep[1] = 0
+
         solve_overlapping(n_of_cells_x, n_of_cells_y, n_of_cells_z, n_materials, id_mats_keep, mesher_output)
-            
 
 
 
-        origin_x = geometry_data_object["meshXmin"]*1e-3
-        origin_y = geometry_data_object["meshYmin"]*1e-3
-        origin_z = geometry_data_object["meshZmin"]*1e-3
+
+        origin_x = geometry_data_object["meshXmin"] * 1e-3
+        origin_y = geometry_data_object["meshYmin"] * 1e-3
+        origin_z = geometry_data_object["meshZmin"] * 1e-3
 
 
         # assert(isinstance(mesher_output, np.ndarray))
@@ -218,18 +272,10 @@ function doMeshing(dictData::Dict)
         # @assert origin_z isa Float64
 
         # Writing to data.json
-        json_file = "outputMesher.json"
-        
-        return dump_json_data(json_file, counter_stl_files-1, origin_x, origin_y, origin_z, cell_size_x, cell_size_y, cell_size_z,
-                n_of_cells_x, n_of_cells_y, n_of_cells_z, mesher_output, mapping_ids_to_materials) 
+        json_file_name = "outputMesher.json"
+        mesh_result = dump_json_data(json_file_name, counter_stl_files - 1, origin_x, origin_y, origin_z, cell_size_x, cell_size_y, cell_size_z,
+            n_of_cells_x, n_of_cells_y, n_of_cells_z, mesher_output, mapping_ids_to_materials)
+        mesh_result["mesh_is_valid"] = is_mesh_valid(mesh_result["mesher_matrices"])
+        return mesh_result
     end
-end
-
-function slicematrix(A::AbstractMatrix{T}) where T
-    m, n = size(A)
-    B = Vector{T}[Vector{T}(undef, n) for _ in 1:m]
-    for i in 1:m
-        B[i] .= A[i, :]
-    end
-    return B
 end

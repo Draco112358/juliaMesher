@@ -141,32 +141,33 @@ function is_brick_valid(brick_coords::CartesianIndex, mesher_matrices::Dict)
     brickDown = existsThisBrick(CartesianIndex(brick_coords[1] - 1, brick_coords[2], brick_coords[3]), mesher_matrices)
     brickUp = existsThisBrick(CartesianIndex(brick_coords[1] + 1, brick_coords[2], brick_coords[3]), mesher_matrices)
     if (!brickDown && !brickUp)
-        return false
+        return Dict("valid" => false, "axis" => "x")
     end
     brickDown = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2] - 1, brick_coords[3]), mesher_matrices)
     brickUp = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2] + 1, brick_coords[3]), mesher_matrices)
     if (!brickDown && !brickUp)
-        return false
+        return return Dict("valid" => false, "axis" => "y")
     end
     brickDown = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2], brick_coords[3] - 1), mesher_matrices)
     brickUp = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2], brick_coords[3] + 1), mesher_matrices)
     if (!brickDown && !brickUp)
-        return false
+        return return Dict("valid" => false, "axis" => "z")
     end
-    return true
+    return Dict("valid" => true)
 end
 
 function is_mesh_valid(mesher_matrices::Dict)
     for material in keys(mesher_matrices)
         for brick_coords in CartesianIndices((1:length(mesher_matrices[material]), 1:length(mesher_matrices[material][1]), 1:length(mesher_matrices[material][1][1])))
             if (mesher_matrices[material][brick_coords[1]][brick_coords[2]][brick_coords[3]])
-                if (!is_brick_valid(brick_coords, mesher_matrices))
-                    return false
+                brick_valid = is_brick_valid(brick_coords, mesher_matrices)
+                if (!brick_valid["valid"])
+                    return brick_valid
                 end
             end
         end
     end
-    return true
+    return Dict("valid" => true)
 end
 
 

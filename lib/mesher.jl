@@ -128,31 +128,29 @@ end
 
 function existsThisBrick(brick_coords::CartesianIndex, mesher_matrices::Dict)
     for material in keys(mesher_matrices)
-        if 1 <= brick_coords[1] <= length(mesher_matrices[material])
-            if 1 <= brick_coords[2] <= length(mesher_matrices[material][brick_coords[1]])
-                if 1 <= brick_coords[3] <= length(mesher_matrices[material][brick_coords[1]][brick_coords[2]])
-                    return mesher_matrices[material][brick_coords[1]][brick_coords[2]][brick_coords[3]]
-                end
-            end
+        if 1 <= brick_coords[1] <= length(mesher_matrices[material]) &&
+           1 <= brick_coords[2] <= length(mesher_matrices[material][brick_coords[1]]) &&
+           1 <= brick_coords[3] <= length(mesher_matrices[material][brick_coords[1]][brick_coords[2]])
+            return mesher_matrices[material][brick_coords[1]][brick_coords[2]][brick_coords[3]]
         end
     end
     return false
 end
 
 function is_brick_valid(brick_coords::CartesianIndex, mesher_matrices::Dict)
-    brickDown = existsThisBrick(CartesianIndex(brick_coords[1]-1, brick_coords[2], brick_coords[3]), mesher_matrices)
-    brickUp = existsThisBrick(CartesianIndex(brick_coords[1]+1, brick_coords[2], brick_coords[3]), mesher_matrices)
-    if(!brickDown && !brickUp)
+    brickDown = existsThisBrick(CartesianIndex(brick_coords[1] - 1, brick_coords[2], brick_coords[3]), mesher_matrices)
+    brickUp = existsThisBrick(CartesianIndex(brick_coords[1] + 1, brick_coords[2], brick_coords[3]), mesher_matrices)
+    if (!brickDown && !brickUp)
         return false
     end
-    brickDown = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2]-1, brick_coords[3]), mesher_matrices)
-    brickUp = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2]+1, brick_coords[3]), mesher_matrices)
-    if(!brickDown && !brickUp)
+    brickDown = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2] - 1, brick_coords[3]), mesher_matrices)
+    brickUp = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2] + 1, brick_coords[3]), mesher_matrices)
+    if (!brickDown && !brickUp)
         return false
     end
-    brickDown = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2], brick_coords[3]-1), mesher_matrices)
-    brickUp = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2], brick_coords[3]+1), mesher_matrices)
-    if(!brickDown && !brickUp)
+    brickDown = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2], brick_coords[3] - 1), mesher_matrices)
+    brickUp = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2], brick_coords[3] + 1), mesher_matrices)
+    if (!brickDown && !brickUp)
         return false
     end
     return true
@@ -161,8 +159,8 @@ end
 function is_mesh_valid(mesher_matrices::Dict)
     for material in keys(mesher_matrices)
         for brick_coords in CartesianIndices((1:length(mesher_matrices[material]), 1:length(mesher_matrices[material][1]), 1:length(mesher_matrices[material][1][1])))
-            if(mesher_matrices[material][brick_coords[1]][brick_coords[2]][brick_coords[3]])
-                if(!is_brick_valid(brick_coords, mesher_matrices))
+            if (mesher_matrices[material][brick_coords[1]][brick_coords[2]][brick_coords[3]])
+                if (!is_brick_valid(brick_coords, mesher_matrices))
                     return false
                 end
             end

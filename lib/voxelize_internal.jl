@@ -172,7 +172,7 @@ function CONVERT_meshformat(v0,v1,v2)
 
     vertices=vcat(v0, v1)
     vertices = vcat(vertices, v2)
-    vertices = sort(unique(vertices))
+    vertices = sort(unique(vertices, dims=1), dims=1)
 
     faces = zeros(size(v0)[1], 3)
 
@@ -400,10 +400,10 @@ function voxel_intern(grid_x,grid_y,grid_z,v0_in,v1_in,v2_in,input_desc,case_per
                             continue_cycle=true
                             while continue_cycle==true
                                 vertexindex=find_first(checkindex, 0)
-                                if vertexindex==0
+                                if vertexindex==1
                                     continue_cycle=false
                                 else
-                                    vertexindex = find_first(checkindex, 0)
+                                    vertexindex = find_first(checkindex, -1)
                                     temp_faces, temp_vertices = CONVERT_meshformat(v0[vertexCROSSLIST,:],v1[vertexCROSSLIST,:],v2[vertexCROSSLIST,:])
                                     adjacentindex = [i in temp_faces[vertexindex,:] for i in temp_faces]
                                     coN=zeros(size(adjacentindex)[1],3)

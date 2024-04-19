@@ -17,3 +17,7 @@ end
 route("/meshing" ,method="POST") do 
     return JSON.json(doMeshing(jsonpayload()))
 end
+
+route("/meshingAdvice" ,method="POST") do 
+  return JSON.json(quantumAdvice(jsonpayload()))
+end

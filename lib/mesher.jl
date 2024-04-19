@@ -188,9 +188,9 @@ function doMeshing(dictData::Dict)
         #mesh_stl_converted = Meshes.Polytope(3,3,mesh_stl)
         #@assert mesh_stl_converted isa Mesh
         meshes[mesh_id] = mesh_stl_converted
+        
         Base.Filesystem.rm("/tmp/stl.stl", force=true)
     end
-
     geometry_x_bound, geometry_y_bound, geometry_z_bound, geometry_data_object = find_box_dimensions(meshes)
 
 
@@ -277,4 +277,71 @@ function doMeshing(dictData::Dict)
         mesh_result["mesh_is_valid"] = is_mesh_valid(mesh_result["mesher_matrices"])
         return mesh_result
     end
+end
+
+function quantumAdvice(mesherInput::Dict)
+    meshes = Dict()
+    for geometry in Array{Any}(mesherInput["STLList"])
+        #@assert geometry isa Dict
+        mesh_id = geometry["material"]
+        mesh_stl = geometry["STL"]
+        #@assert mesh_id not in meshes
+        open("/tmp/stl.stl", "w") do write_file
+            write(write_file, mesh_stl)
+        end
+        mesh_stl = load("/tmp/stl.stl")
+        display(mesh_stl)
+        mesh_stl_converted = convert(Meshes.Mesh, mesh_stl)
+
+        #mesh_stl_converted = Meshes.Polytope(3,3,mesh_stl)
+        #@assert mesh_stl_converted isa Mesh
+        meshes[mesh_id] = mesh_stl_converted
+        Base.Filesystem.rm("/tmp/stl.stl", force=true)
+    end
+    q_x = 100
+    q_y = 100
+    q_z = 100
+    for (key, mesh) in meshes
+        for c=1:nelements(mesh)
+        
+            #% t1, t2 e t3 sono i vertici di un triangolo
+            t1=coordinates(vertices(mesh[c])[1]);
+            t2=coordinates(vertices(mesh[c])[2])
+            t3=coordinates(vertices(mesh[c])[3])
+            
+            sx=abs(t1[1]-t2[1]);
+            if sx>1e-10 && q_x>sx q_x=sx end
+            
+            sx=abs(t1[1]-t3[1]);
+            if sx>1e-10 && q_x>sx q_x=sx end
+            
+            sx=abs(t2[1]-t3[1]);
+            if sx>1e-10 && q_x>sx q_x=sx; end
+            
+            sy=abs(t1[2]-t2[2]);
+            if sy>1e-10 && q_y>sy q_y=sy; end
+            
+            sy=abs(t1[2]-t3[2]);
+            if sy>1e-10 && q_y>sy q_y=sy; end
+            
+            sy=abs(t2[2]-t3[2]);
+            if sy>1e-10 && q_y>sy q_y=sy; end
+            
+            sz=abs(t1[3]-t2[3]);
+            if sz>1e-10 && q_z>sz q_z=sz; end
+            
+            sz=abs(t1[3]-t3[3]);
+            if sz>1e-10 && q_z>sz q_z=sz; end
+            
+            sz=abs(t2[3]-t3[3]);
+            if sz>1e-10 && q_z>sz q_z=sz; end
+            
+        end
+        
+    end
+    q_x = 0.5*q_x
+    q_y = 0.5*q_y
+    q_z = 0.5*q_z
+
+    return [q_x, q_y, q_z]
 end

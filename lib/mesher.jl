@@ -290,11 +290,7 @@ function quantumAdvice(mesherInput::Dict)
             write(write_file, mesh_stl)
         end
         mesh_stl = load("/tmp/stl.stl")
-        display(mesh_stl)
         mesh_stl_converted = convert(Meshes.Mesh, mesh_stl)
-
-        #mesh_stl_converted = Meshes.Polytope(3,3,mesh_stl)
-        #@assert mesh_stl_converted isa Mesh
         meshes[mesh_id] = mesh_stl_converted
         Base.Filesystem.rm("/tmp/stl.stl", force=true)
     end

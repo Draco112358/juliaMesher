@@ -94,7 +94,7 @@ function dump_json_data(filename, n_materials, o_x::Float64, o_y::Float64, o_z::
     n_cells = Dict("n_cells_x" => convert(Float64, nc_x), "n_cells_y" => convert(Float64, nc_y), "n_cells_z" => convert(Float64, nc_z))
 
     # Controllare perché è necessaria questa moltiplicazione per 1000.
-    cell_size = Dict("cell_size_x" => cs_x, "cell_size_y" => cs_y, "cell_size_z" => cs_z)
+    cell_size = Dict("cell_size_x" => cs_x*1000, "cell_size_y" => cs_y*1000, "cell_size_z" => cs_z*1000)
 
     materials = Dict()
     for element in id_to_material

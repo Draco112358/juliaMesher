@@ -23,6 +23,7 @@ function find_box_dimensions(dict_meshes::Dict)
     global_max_x, global_max_y, global_max_z = -prevfloat(typemax(Float64)), -prevfloat(typemax(Float64)), -prevfloat(typemax(Float64))
 
     for (key, value) in dict_meshes
+        value = value["mesh"]
         #println(dict_meshes)
         minx, maxx, miny, maxy, minz, maxz = find_mins_maxs(value)
         global_min_x = min(global_min_x, minx)
@@ -96,11 +97,6 @@ function dump_json_data(filename, n_materials, o_x::Float64, o_y::Float64, o_z::
     # Controllare perché è necessaria questa moltiplicazione per 1000.
     cell_size = Dict("cell_size_x" => cs_x*1000, "cell_size_y" => cs_y*1000, "cell_size_z" => cs_z*1000)
 
-    materials = Dict()
-    for element in id_to_material
-        materials[element.first] = id_to_material[element.first]
-    end
-
     mesher_matrices_dict = Dict()
 
 
@@ -123,12 +119,12 @@ function dump_json_data(filename, n_materials, o_x::Float64, o_y::Float64, o_z::
 
 
     #@assert count == n_materials+1
-    json_dict = Dict("n_materials" => n_materials, "materials" => materials, "origin" => origin, "cell_size" => cell_size, "n_cells" => n_cells, "mesher_matrices" => mesher_matrices_dict)
+    json_dict = Dict("n_materials" => n_materials, "materials" => id_to_material, "origin" => origin, "cell_size" => cell_size, "n_cells" => n_cells, "mesher_matrices" => mesher_matrices_dict)
     return json_dict
 end
 
 function existsThisBrick(brick_coords::CartesianIndex, mesher_matrices::Dict, material)
-    if 1 <= brick_coords[1] <= length(mesher_matrices[material]) &&
+    if  1 <= brick_coords[1] <= length(mesher_matrices[material]) &&
         1 <= brick_coords[2] <= length(mesher_matrices[material][brick_coords[1]]) &&
         1 <= brick_coords[3] <= length(mesher_matrices[material][brick_coords[1]][brick_coords[2]])
         return mesher_matrices[material][brick_coords[1]][brick_coords[2]][brick_coords[3]]
@@ -175,7 +171,7 @@ function doMeshing(dictData::Dict)
     meshes = Dict()
     for geometry in Array{Any}(dictData["STLList"])
         #@assert geometry isa Dict
-        mesh_id = geometry["material"]
+        mesh_id = geometry["material"]["name"]
         mesh_stl = geometry["STL"]
         #@assert mesh_id not in meshes
         open("/tmp/stl.stl", "w") do write_file
@@ -186,7 +182,7 @@ function doMeshing(dictData::Dict)
 
         #mesh_stl_converted = Meshes.Polytope(3,3,mesh_stl)
         #@assert mesh_stl_converted isa Mesh
-        meshes[mesh_id] = mesh_stl_converted
+        meshes[mesh_id] = Dict("mesh" => mesh_stl_converted, "conductivity" => geometry["material"]["conductivity"])
         
         Base.Filesystem.rm("/tmp/stl.stl", force=true)
     end
@@ -239,22 +235,26 @@ function doMeshing(dictData::Dict)
         mapping_ids_to_materials = Dict()
 
         counter_stl_files = 1
-        for mesh_id in meshes
+        for (material, value) in meshes
             #@assert meshes[mesh_id] isa Mesh
-            mesher_output[counter_stl_files, :, :, :] = voxelize(n_of_cells_x, n_of_cells_y, n_of_cells_z, meshes[mesh_id.first], geometry_data_object)
+            mesher_output[counter_stl_files, :, :, :] = voxelize(n_of_cells_x, n_of_cells_y, n_of_cells_z, value["mesh"], geometry_data_object)
 
-            mapping_ids_to_materials[counter_stl_files] = mesh_id.first
+            mapping_ids_to_materials[counter_stl_files] = material
             counter_stl_files += 1
         end
 
         id_mats_keep = zeros(Int64, n_materials)
 
         #inserire ciclo che imposta id_mats_keep a 1 per i materiali con sigma diverso da 0 (conduttori)
-        id_mats_keep[1] = 1
+        ind = 1
+        for (material, value) in meshes
+            if(value["conductivity"] != 0.0)
+                id_mats_keep[ind] = 1
+            end
+            ind += 1
+        end
 
         solve_overlapping(n_of_cells_x, n_of_cells_y, n_of_cells_z, n_materials, id_mats_keep, mesher_output)
-
-        #println(mesher_output[1,5,6,:])
 
 
         origin_x = geometry_data_object["meshXmin"] * 1e-3

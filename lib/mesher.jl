@@ -127,30 +127,28 @@ function dump_json_data(filename, n_materials, o_x::Float64, o_y::Float64, o_z::
     return json_dict
 end
 
-function existsThisBrick(brick_coords::CartesianIndex, mesher_matrices::Dict)
-    for material in keys(mesher_matrices)
-        if 1 <= brick_coords[1] <= length(mesher_matrices[material]) &&
-           1 <= brick_coords[2] <= length(mesher_matrices[material][brick_coords[1]]) &&
-           1 <= brick_coords[3] <= length(mesher_matrices[material][brick_coords[1]][brick_coords[2]])
-            return mesher_matrices[material][brick_coords[1]][brick_coords[2]][brick_coords[3]]
-        end
+function existsThisBrick(brick_coords::CartesianIndex, mesher_matrices::Dict, material)
+    if 1 <= brick_coords[1] <= length(mesher_matrices[material]) &&
+        1 <= brick_coords[2] <= length(mesher_matrices[material][brick_coords[1]]) &&
+        1 <= brick_coords[3] <= length(mesher_matrices[material][brick_coords[1]][brick_coords[2]])
+        return mesher_matrices[material][brick_coords[1]][brick_coords[2]][brick_coords[3]]
     end
     return false
 end
 
-function is_brick_valid(brick_coords::CartesianIndex, mesher_matrices::Dict)
-    brickDown = existsThisBrick(CartesianIndex(brick_coords[1] - 1, brick_coords[2], brick_coords[3]), mesher_matrices)
-    brickUp = existsThisBrick(CartesianIndex(brick_coords[1] + 1, brick_coords[2], brick_coords[3]), mesher_matrices)
+function is_brick_valid(brick_coords::CartesianIndex, mesher_matrices::Dict, material)
+    brickDown = existsThisBrick(CartesianIndex(brick_coords[1] - 1, brick_coords[2], brick_coords[3]), mesher_matrices, material)
+    brickUp = existsThisBrick(CartesianIndex(brick_coords[1] + 1, brick_coords[2], brick_coords[3]), mesher_matrices, material)
     if (!brickDown && !brickUp)
         return Dict("valid" => false, "axis" => "x")
     end
-    brickDown = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2] - 1, brick_coords[3]), mesher_matrices)
-    brickUp = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2] + 1, brick_coords[3]), mesher_matrices)
+    brickDown = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2] - 1, brick_coords[3]), mesher_matrices, material)
+    brickUp = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2] + 1, brick_coords[3]), mesher_matrices, material)
     if (!brickDown && !brickUp)
         return return Dict("valid" => false, "axis" => "y")
     end
-    brickDown = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2], brick_coords[3] - 1), mesher_matrices)
-    brickUp = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2], brick_coords[3] + 1), mesher_matrices)
+    brickDown = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2], brick_coords[3] - 1), mesher_matrices, material)
+    brickUp = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2], brick_coords[3] + 1), mesher_matrices, material)
     if (!brickDown && !brickUp)
         return return Dict("valid" => false, "axis" => "z")
     end
@@ -161,7 +159,7 @@ function is_mesh_valid(mesher_matrices::Dict)
     for material in keys(mesher_matrices)
         for brick_coords in CartesianIndices((1:length(mesher_matrices[material]), 1:length(mesher_matrices[material][1]), 1:length(mesher_matrices[material][1][1])))
             if (mesher_matrices[material][brick_coords[1]][brick_coords[2]][brick_coords[3]])
-                brick_valid = is_brick_valid(brick_coords, mesher_matrices)
+                brick_valid = is_brick_valid(brick_coords, mesher_matrices, material)
                 if (!brick_valid["valid"])
                     return brick_valid
                 end
@@ -251,11 +249,12 @@ function doMeshing(dictData::Dict)
 
         id_mats_keep = zeros(Int64, n_materials)
 
-        id_mats_keep[1] = 0
+        #inserire ciclo che imposta id_mats_keep a 1 per i materiali con sigma diverso da 0 (conduttori)
+        id_mats_keep[1] = 1
 
         solve_overlapping(n_of_cells_x, n_of_cells_y, n_of_cells_z, n_materials, id_mats_keep, mesher_output)
 
-
+        #println(mesher_output[1,5,6,:])
 
 
         origin_x = geometry_data_object["meshXmin"] * 1e-3

@@ -283,7 +283,7 @@ function quantumAdvice(mesherInput::Dict)
     meshes = Dict()
     for geometry in Array{Any}(mesherInput["STLList"])
         #@assert geometry isa Dict
-        mesh_id = geometry["material"]
+        mesh_id = geometry["material"]["name"]
         mesh_stl = geometry["STL"]
         #@assert mesh_id not in meshes
         open("/tmp/stl.stl", "w") do write_file

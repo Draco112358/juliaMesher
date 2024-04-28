@@ -1,15 +1,14 @@
 using Meshes
 
-function solve_overlapping(n_cells_x,n_cells_y,n_cells_z,num_materials,id_mat_keep,output_meshing)
-
+function solve_overlapping(n_cells_x,n_cells_y,n_cells_z,id_mat_keep,output_meshing)
     for c1 in range(1, n_cells_x)
         for c2 in range(1, n_cells_y)
             for c3 in range(1, n_cells_z)
-                for k in range(1, num_materials)
+                for k in keys(id_mat_keep)
                     if output_meshing[k,c1, c2, c3] == true
-                        for k2 in range(1, num_materials)
+                        for k2 in keys(id_mat_keep)
                             if output_meshing[k2,c1, c2, c3] == true && k!=k2
-                                if k in id_mat_keep
+                                if id_mat_keep[k]["toKeep"]
                                     output_meshing[k2, c1, c2, c3] = false
                                 else
                                     output_meshing[k, c1, c2, c3] = false

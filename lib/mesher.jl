@@ -80,7 +80,7 @@ function slicematrix(A::AbstractMatrix{T}) where {T}
     return B
 end
 
-function dump_json_data(filename, n_materials, o_x::Float64, o_y::Float64, o_z::Float64, cs_x::Float64, cs_y::Float64, cs_z::Float64, nc_x, nc_y, nc_z, matr, id_to_material)
+function dump_json_data(filename, o_x::Float64, o_y::Float64, o_z::Float64, cs_x::Float64, cs_y::Float64, cs_z::Float64, nc_x, nc_y, nc_z, matr, id_to_material)
 
     #print("Serialization to:",filename)
     @assert cs_x isa Float64
@@ -95,17 +95,17 @@ function dump_json_data(filename, n_materials, o_x::Float64, o_y::Float64, o_z::
     n_cells = Dict("n_cells_x" => convert(Float64, nc_x), "n_cells_y" => convert(Float64, nc_y), "n_cells_z" => convert(Float64, nc_z))
 
     # Controllare perché è necessaria questa moltiplicazione per 1000.
-    cell_size = Dict("cell_size_x" => cs_x*1000, "cell_size_y" => cs_y*1000, "cell_size_z" => cs_z*1000)
+    cell_size = Dict("cell_size_x" => cs_x * 1000, "cell_size_y" => cs_y * 1000, "cell_size_z" => cs_z * 1000)
 
     mesher_matrices_dict = Dict()
 
 
-    for c in range(1, n_materials)
+    for c in range(1, length(id_to_material))
         x = []
         for i in range(1, nc_x)
             push!(x, slicematrix(matr[c, i, :, :]))
         end
-        mesher_matrices_dict[id_to_material[c]] = x
+        mesher_matrices_dict[id_to_material[c]["material"]] = x
 
         # for matrix in eachslice(matr2, dims=1)
         #     #@assert count in keys(id_to_material)
@@ -119,14 +119,14 @@ function dump_json_data(filename, n_materials, o_x::Float64, o_y::Float64, o_z::
 
 
     #@assert count == n_materials+1
-    json_dict = Dict("n_materials" => n_materials, "materials" => id_to_material, "origin" => origin, "cell_size" => cell_size, "n_cells" => n_cells, "mesher_matrices" => mesher_matrices_dict)
+    json_dict = Dict("n_materials" => length(id_to_material), "materials" => id_to_material, "origin" => origin, "cell_size" => cell_size, "n_cells" => n_cells, "mesher_matrices" => mesher_matrices_dict)
     return json_dict
 end
 
 function existsThisBrick(brick_coords::CartesianIndex, mesher_matrices::Dict, material)
-    if  1 <= brick_coords[1] <= length(mesher_matrices[material]) &&
-        1 <= brick_coords[2] <= length(mesher_matrices[material][brick_coords[1]]) &&
-        1 <= brick_coords[3] <= length(mesher_matrices[material][brick_coords[1]][brick_coords[2]])
+    if 1 <= brick_coords[1] <= length(mesher_matrices[material]) &&
+       1 <= brick_coords[2] <= length(mesher_matrices[material][brick_coords[1]]) &&
+       1 <= brick_coords[3] <= length(mesher_matrices[material][brick_coords[1]][brick_coords[2]])
         return mesher_matrices[material][brick_coords[1]][brick_coords[2]][brick_coords[3]]
     end
     return false
@@ -183,7 +183,7 @@ function doMeshing(dictData::Dict)
         #mesh_stl_converted = Meshes.Polytope(3,3,mesh_stl)
         #@assert mesh_stl_converted isa Mesh
         meshes[mesh_id] = Dict("mesh" => mesh_stl_converted, "conductivity" => geometry["material"]["conductivity"])
-        
+
         Base.Filesystem.rm("/tmp/stl.stl", force=true)
     end
     geometry_x_bound, geometry_y_bound, geometry_z_bound, geometry_data_object = find_box_dimensions(meshes)
@@ -227,10 +227,7 @@ function doMeshing(dictData::Dict)
         #         assert abs(size*(1/precision) - quantum)<=precision
 
 
-
-        n_materials = length(dictData["STLList"])
-
-        mesher_output = fill(false, (n_materials, n_of_cells_x, n_of_cells_y, n_of_cells_z))
+        mesher_output = fill(false, (length(dictData["STLList"]), n_of_cells_x, n_of_cells_y, n_of_cells_z))
 
         mapping_ids_to_materials = Dict()
 
@@ -239,22 +236,13 @@ function doMeshing(dictData::Dict)
             #@assert meshes[mesh_id] isa Mesh
             mesher_output[counter_stl_files, :, :, :] = voxelize(n_of_cells_x, n_of_cells_y, n_of_cells_z, value["mesh"], geometry_data_object)
 
-            mapping_ids_to_materials[counter_stl_files] = material
+            #mapping dei materiali su id e impostazione priorità per i conduttori in overlapping.
+            mapping_ids_to_materials[counter_stl_files] = Dict("material" => material, "toKeep" => (value["conductivity"] != 0.0) ? true : false)
             counter_stl_files += 1
         end
 
-        id_mats_keep = zeros(Int64, n_materials)
 
-        #inserire ciclo che imposta id_mats_keep a 1 per i materiali con sigma diverso da 0 (conduttori)
-        ind = 1
-        for (material, value) in meshes
-            if(value["conductivity"] != 0.0)
-                id_mats_keep[ind] = 1
-            end
-            ind += 1
-        end
-
-        solve_overlapping(n_of_cells_x, n_of_cells_y, n_of_cells_z, n_materials, id_mats_keep, mesher_output)
+        solve_overlapping(n_of_cells_x, n_of_cells_y, n_of_cells_z, mapping_ids_to_materials, mesher_output)
 
 
         origin_x = geometry_data_object["meshXmin"] * 1e-3
@@ -272,7 +260,7 @@ function doMeshing(dictData::Dict)
 
         # Writing to data.json
         json_file_name = "outputMesher.json"
-        mesh_result = dump_json_data(json_file_name, counter_stl_files - 1, origin_x, origin_y, origin_z, cell_size_x, cell_size_y, cell_size_z,
+        mesh_result = dump_json_data(json_file_name, origin_x, origin_y, origin_z, cell_size_x, cell_size_y, cell_size_z,
             n_of_cells_x, n_of_cells_y, n_of_cells_z, mesher_output, mapping_ids_to_materials)
         mesh_result["mesh_is_valid"] = is_mesh_valid(mesh_result["mesher_matrices"])
         return mesh_result
@@ -298,46 +286,64 @@ function quantumAdvice(mesherInput::Dict)
     q_y = 100
     q_z = 100
     for (key, mesh) in meshes
-        for c=1:nelements(mesh)
-        
+        for c = 1:nelements(mesh)
+
             #% t1, t2 e t3 sono i vertici di un triangolo
-            t1=coordinates(vertices(mesh[c])[1]);
-            t2=coordinates(vertices(mesh[c])[2])
-            t3=coordinates(vertices(mesh[c])[3])
-            
-            sx=abs(t1[1]-t2[1]);
-            if sx>1e-10 && q_x>sx q_x=sx end
-            
-            sx=abs(t1[1]-t3[1]);
-            if sx>1e-10 && q_x>sx q_x=sx end
-            
-            sx=abs(t2[1]-t3[1]);
-            if sx>1e-10 && q_x>sx q_x=sx; end
-            
-            sy=abs(t1[2]-t2[2]);
-            if sy>1e-10 && q_y>sy q_y=sy; end
-            
-            sy=abs(t1[2]-t3[2]);
-            if sy>1e-10 && q_y>sy q_y=sy; end
-            
-            sy=abs(t2[2]-t3[2]);
-            if sy>1e-10 && q_y>sy q_y=sy; end
-            
-            sz=abs(t1[3]-t2[3]);
-            if sz>1e-10 && q_z>sz q_z=sz; end
-            
-            sz=abs(t1[3]-t3[3]);
-            if sz>1e-10 && q_z>sz q_z=sz; end
-            
-            sz=abs(t2[3]-t3[3]);
-            if sz>1e-10 && q_z>sz q_z=sz; end
-            
+            t1 = coordinates(vertices(mesh[c])[1])
+            t2 = coordinates(vertices(mesh[c])[2])
+            t3 = coordinates(vertices(mesh[c])[3])
+
+            sx = abs(t1[1] - t2[1])
+            if sx > 1e-10 && q_x > sx
+                q_x = sx
+            end
+
+            sx = abs(t1[1] - t3[1])
+            if sx > 1e-10 && q_x > sx
+                q_x = sx
+            end
+
+            sx = abs(t2[1] - t3[1])
+            if sx > 1e-10 && q_x > sx
+                q_x = sx
+            end
+
+            sy = abs(t1[2] - t2[2])
+            if sy > 1e-10 && q_y > sy
+                q_y = sy
+            end
+
+            sy = abs(t1[2] - t3[2])
+            if sy > 1e-10 && q_y > sy
+                q_y = sy
+            end
+
+            sy = abs(t2[2] - t3[2])
+            if sy > 1e-10 && q_y > sy
+                q_y = sy
+            end
+
+            sz = abs(t1[3] - t2[3])
+            if sz > 1e-10 && q_z > sz
+                q_z = sz
+            end
+
+            sz = abs(t1[3] - t3[3])
+            if sz > 1e-10 && q_z > sz
+                q_z = sz
+            end
+
+            sz = abs(t2[3] - t3[3])
+            if sz > 1e-10 && q_z > sz
+                q_z = sz
+            end
+
         end
-        
+
     end
-    q_x = 0.5*q_x
-    q_y = 0.5*q_y
-    q_z = 0.5*q_z
+    q_x = 0.5 * q_x
+    q_y = 0.5 * q_y
+    q_z = 0.5 * q_z
 
     return [q_x, q_y, q_z]
 end

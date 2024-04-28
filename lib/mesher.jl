@@ -117,9 +117,14 @@ function dump_json_data(filename, o_x::Float64, o_y::Float64, o_z::Float64, cs_x
         # end
     end
 
+    mats = Dict()
+    for (id, m) in id_to_material
+        mats[id] = m["material"]
+    end
+
 
     #@assert count == n_materials+1
-    json_dict = Dict("n_materials" => length(id_to_material), "materials" => id_to_material, "origin" => origin, "cell_size" => cell_size, "n_cells" => n_cells, "mesher_matrices" => mesher_matrices_dict)
+    json_dict = Dict("n_materials" => length(id_to_material), "materials" => mats, "origin" => origin, "cell_size" => cell_size, "n_cells" => n_cells, "mesher_matrices" => mesher_matrices_dict)
     return json_dict
 end
 

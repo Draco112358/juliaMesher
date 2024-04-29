@@ -179,17 +179,17 @@ function doMeshing(dictData::Dict)
         mesh_id = geometry["material"]["name"]
         mesh_stl = geometry["STL"]
         #@assert mesh_id not in meshes
-        open("/tmp/stl.stl", "w") do write_file
+        open("stl.stl", "w") do write_file
             write(write_file, mesh_stl)
         end
-        mesh_stl = load("/tmp/stl.stl")
+        mesh_stl = load("stl.stl")
         mesh_stl_converted = convert(Meshes.Mesh, mesh_stl)
 
         #mesh_stl_converted = Meshes.Polytope(3,3,mesh_stl)
         #@assert mesh_stl_converted isa Mesh
         meshes[mesh_id] = Dict("mesh" => mesh_stl_converted, "conductivity" => geometry["material"]["conductivity"])
 
-        Base.Filesystem.rm("/tmp/stl.stl", force=true)
+        Base.Filesystem.rm("stl.stl", force=true)
     end
     geometry_x_bound, geometry_y_bound, geometry_z_bound, geometry_data_object = find_box_dimensions(meshes)
 
@@ -279,13 +279,13 @@ function quantumAdvice(mesherInput::Dict)
         mesh_id = geometry["material"]["name"]
         mesh_stl = geometry["STL"]
         #@assert mesh_id not in meshes
-        open("/tmp/stl.stl", "w") do write_file
+        open("stl.stl", "w") do write_file
             write(write_file, mesh_stl)
         end
-        mesh_stl = load("/tmp/stl.stl")
+        mesh_stl = load("stl.stl")
         mesh_stl_converted = convert(Meshes.Mesh, mesh_stl)
         meshes[mesh_id] = mesh_stl_converted
-        Base.Filesystem.rm("/tmp/stl.stl", force=true)
+        Base.Filesystem.rm("stl.stl", force=true)
     end
     q_x = 100
     q_y = 100

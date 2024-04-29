@@ -32,4 +32,4 @@ function force_compile()
   println("------------- MESHER READY ---------------")
 end
 
-@async force_compile()
+Threads.@spawn force_compile()

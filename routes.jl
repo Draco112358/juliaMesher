@@ -1,4 +1,4 @@
-using Genie, Genie.Router, Genie.Renderer, Genie.Renderer.Html, Genie.Renderer.Json, Genie.Requests, JSON
+using Genie, Genie.Router, Genie.Renderer, Genie.Renderer.Html, Genie.Renderer.Json, Genie.Requests, JSON, SimpleWebsockets, Base.Threads
 
 include("lib/mesher.jl")
 
@@ -13,10 +13,25 @@ Genie.config.cors_allowed_origins = ["*"]
 #   serve_static_file("welcome.html")
 # end
 
+server = WebsocketServer()
 
-route("/meshing", method="POST") do
-  return JSON.json(doMeshing(jsonpayload()))
+Threads.@spawn serve(server, 8081, verbose=false)
+
+const stopComputation = []
+
+listen(server, :client) do client
+  listen(client, :message) do message
+    println(message)
+    if message == "Stop computation"
+      #error("stop computation")
+      push!(stopComputation, 1)
+    end
+  end
+  route("/meshing", method="POST") do
+    return JSON.json(doMeshing(jsonpayload()))
+  end
 end
+
 
 route("/meshingAdvice", method="POST") do
   return JSON.json(quantumAdvice(jsonpayload()))
@@ -29,7 +44,7 @@ function force_compile()
     data = open(JSON.parse, "first_run_data.json")
     Genie.Requests.HTTP.request(r.method, "http://localhost:8003" * tolink(name), [("Content-Type", "application/json")], JSON.json(data))
   end
-  println("------------- MESHER READY ---------------")
+  println("MESHER READY")
 end
 
 Threads.@spawn force_compile()

@@ -111,7 +111,7 @@ function dump_json_data(filename, o_x::Float64, o_y::Float64, o_z::Float64, cs_x
         #     #@assert count in keys(id_to_material)
         #     println("->")
         #     display(matrix)
-        #     
+        #
         #     #display(mesher_matrices_dict[id_to_material[count]])
         #     #count += 1
         # end
@@ -141,38 +141,53 @@ function is_brick_valid(brick_coords::CartesianIndex, mesher_matrices::Dict, mat
     brickDown = existsThisBrick(CartesianIndex(brick_coords[1] - 1, brick_coords[2], brick_coords[3]), mesher_matrices, material)
     brickUp = existsThisBrick(CartesianIndex(brick_coords[1] + 1, brick_coords[2], brick_coords[3]), mesher_matrices, material)
     if (!brickDown && !brickUp)
-        return Dict("valid" => false, "axis" => "x")
+        return Dict("valid" => false, "axis" => "x", "stopped" => false)
     end
     brickDown = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2] - 1, brick_coords[3]), mesher_matrices, material)
     brickUp = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2] + 1, brick_coords[3]), mesher_matrices, material)
     if (!brickDown && !brickUp)
-        return return Dict("valid" => false, "axis" => "y")
+        return return Dict("valid" => false, "axis" => "y", "stopped" => false)
     end
     brickDown = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2], brick_coords[3] - 1), mesher_matrices, material)
     brickUp = existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2], brick_coords[3] + 1), mesher_matrices, material)
     if (!brickDown && !brickUp)
-        return return Dict("valid" => false, "axis" => "z")
+        return return Dict("valid" => false, "axis" => "z", "stopped" => false)
     end
-    return Dict("valid" => true)
+    return Dict("valid" => true, "stopped" => false)
 end
 
-function is_mesh_valid(mesher_matrices::Dict)
+function is_mesh_valid(mesher_matrices::Dict, client)
     for material in keys(mesher_matrices)
+        checkLength = length(mesher_matrices[material])*length(mesher_matrices[material][1])*length(mesher_matrices[material][1][1])
+        if !isnothing(client)
+            send(client, "length:"*string(checkLength))
+        end
+        
+        index = 1
         for brick_coords in CartesianIndices((1:length(mesher_matrices[material]), 1:length(mesher_matrices[material][1]), 1:length(mesher_matrices[material][1][1])))
+            if index % ceil(checkLength/100) == 0
+                if !isnothing(client)
+                    send(client, index)
+                end
+            end
+            if length(stopComputation) > 0
+                pop!(stopComputation)
+                return Dict("valid" => false, "stopped" => true)
+            end
             if (mesher_matrices[material][brick_coords[1]][brick_coords[2]][brick_coords[3]])
                 brick_valid = is_brick_valid(brick_coords, mesher_matrices, material)
                 if (!brick_valid["valid"])
                     return brick_valid
                 end
             end
+            index += 1
         end
     end
     return Dict("valid" => true)
 end
 
 
-function doMeshing(dictData::Dict)
-
+function doMeshing(dictData::Dict, client=nothing)
     meshes = Dict()
     for geometry in Array{Any}(dictData["STLList"])
         #@assert geometry isa Dict
@@ -222,7 +237,6 @@ function doMeshing(dictData::Dict)
         #print("GRID:",n_of_cells_x, n_of_cells_y, n_of_cells_z)
 
         cell_size_x, cell_size_y, cell_size_z = find_sizes(n_of_cells_x, n_of_cells_y, n_of_cells_z, geometry_data_object)
-
         #precision = 0.1
         #print("CELL SIZE AFTER ADJUSTEMENTS:",(cell_size_x), (cell_size_y), (cell_size_z))
         # if __debug__:
@@ -240,7 +254,6 @@ function doMeshing(dictData::Dict)
         for (material, value) in meshes
             #@assert meshes[mesh_id] isa Mesh
             mesher_output[counter_stl_files, :, :, :] = voxelize(n_of_cells_x, n_of_cells_y, n_of_cells_z, value["mesh"], geometry_data_object)
-
             #mapping dei materiali su id e impostazione priorità per i conduttori in overlapping.
             mapping_ids_to_materials[counter_stl_files] = Dict("material" => material, "toKeep" => (value["conductivity"] != 0.0) ? true : false)
             counter_stl_files += 1
@@ -248,7 +261,6 @@ function doMeshing(dictData::Dict)
 
 
         solve_overlapping(n_of_cells_x, n_of_cells_y, n_of_cells_z, mapping_ids_to_materials, mesher_output)
-
 
         origin_x = geometry_data_object["meshXmin"] * 1e-3
         origin_y = geometry_data_object["meshYmin"] * 1e-3
@@ -267,7 +279,13 @@ function doMeshing(dictData::Dict)
         json_file_name = "outputMesher.json"
         mesh_result = dump_json_data(json_file_name, origin_x, origin_y, origin_z, cell_size_x, cell_size_y, cell_size_z,
             n_of_cells_x, n_of_cells_y, n_of_cells_z, mesher_output, mapping_ids_to_materials)
-        mesh_result["mesh_is_valid"] = is_mesh_valid(mesh_result["mesher_matrices"])
+        if !isnothing(client)
+            send(client, "Computing completed")
+        end
+        mesh_result["mesh_is_valid"] = is_mesh_valid(mesh_result["mesher_matrices"], client)
+        if !isnothing(client)
+            close(client)
+        end
         return mesh_result
     end
 end

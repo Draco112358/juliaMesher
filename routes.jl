@@ -1,4 +1,5 @@
 using Genie, Genie.Router, Genie.Renderer, Genie.Renderer.Html, Genie.Renderer.Json, Genie.Requests, JSON, SimpleWebsockets, Base.Threads
+include("lib/saveFiles.jl")
 
 include("lib/mesher.jl")
 Genie.config.run_as_server = true
@@ -22,12 +23,31 @@ listen(server, :client) do client
     end
   end
   route("/meshing", method="POST") do
-    return JSON.json(doMeshing(jsonpayload(), client))
+    result = doMeshing(jsonpayload())
+    if result["isValid"] == true
+      (meshPath, gridsPath) = saveMeshAndGrids(jsonpayload()["fileName"], result)
+      return JSON.json(Dict("mesh" => meshPath, "grids" => gridsPath, "isValid" => result["mesh"]["mesh_is_valid"], "isStopped" => false))
+    elseif !result["isValid"] == false
+      return JSON.json(Dict("mesh" => "", "grids" => "", "isValid" => result["mesh"]["mesh_is_valid"], "isStopped" => result["mesh"]["mesh_is_valid"]["stopped"]))
+    else
+      # caso del quanto impostato troppo grande rispetto alle dimensioni del modello
+      return JSON.json(result)
+    end
   end
 end
 
 route("/meshing2", method="POST") do
-  return JSON.json(doMeshing(jsonpayload()))
+  result = doMeshing(jsonpayload())
+  if result["isValid"] == true
+    (meshPath, gridsPath) = saveMeshAndGrids("init", result)
+    return JSON.json(Dict("mesh" => meshPath, "grids" => gridsPath, "isValid" => result["mesh"]["mesh_is_valid"], "isStopped" => false))
+  elseif result["isValid"] == false
+    return JSON.json(Dict("mesh" => "", "grids" => "", "isValid" => result["mesh"]["mesh_is_valid"], "isStopped" => result["mesh"]["mesh_is_valid"]["stopped"]))
+  else
+    # caso del quanto impostato troppo grande rispetto alle dimensioni del modello
+    return JSON.json(result)
+  end
+
 end
 
 

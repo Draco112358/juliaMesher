@@ -158,14 +158,14 @@ end
 
 function is_mesh_valid(mesher_matrices::Dict, client)
     for material in keys(mesher_matrices)
-        checkLength = length(mesher_matrices[material])*length(mesher_matrices[material][1])*length(mesher_matrices[material][1][1])
+        checkLength = length(mesher_matrices[material]) * length(mesher_matrices[material][1]) * length(mesher_matrices[material][1][1])
         if !isnothing(client)
-            send(client, "length:"*string(checkLength))
+            send(client, "length:" * string(checkLength))
         end
-        
+
         index = 1
         for brick_coords in CartesianIndices((1:length(mesher_matrices[material]), 1:length(mesher_matrices[material][1]), 1:length(mesher_matrices[material][1][1])))
-            if index % ceil(checkLength/100) == 0
+            if index % ceil(checkLength / 100) == 0
                 if !isnothing(client)
                     send(client, index)
                 end
@@ -186,8 +186,69 @@ function is_mesh_valid(mesher_matrices::Dict, client)
     return Dict("valid" => true)
 end
 
+function brick_touches_the_main_bounding_box(brick_coords::CartesianIndex, mesher_matrices::Dict, material)::Bool
+    Nx = size(mesher_matrices[material], 1)
+    Ny = size(mesher_matrices[material], 2)
+    Nz = size(mesher_matrices[material], 3)
+    if brick_coords[1] == 1 || brick_coords[1] == Nx || brick_coords[2] == 1 || brick_coords[2] == Ny || brick_coords[3] == 1 || brick_coords[3] == Nz
+        return true
+    end
+    return false
+end
+
+function brick_is_on_surface(brick_coords::CartesianIndex, mesher_matrices::Dict, material)::Bool
+    if brick_touches_the_main_bounding_box(brick_coords, mesher_matrices, material)
+        return true
+    end
+    for mat in keys(mesher_matrices)
+        if !existsThisBrick(CartesianIndex(brick_coords[1] - 1, brick_coords[2], brick_coords[3]), mesher_matrices, mat)
+            return true
+        end
+        if !existsThisBrick(CartesianIndex(brick_coords[1] + 1, brick_coords[2], brick_coords[3]), mesher_matrices, mat)
+            return true
+        end
+        if !existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2] - 1, brick_coords[3]), mesher_matrices, mat)
+            return true
+        end
+        if !existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2] + 1, brick_coords[3]), mesher_matrices, mat)
+            return true
+        end
+        if !existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2], brick_coords[3] - 1), mesher_matrices, mat)
+            return true
+        end
+        if !existsThisBrick(CartesianIndex(brick_coords[1], brick_coords[2], brick_coords[3] + 1), mesher_matrices, mat)
+            return true
+        end
+    end
+    return false
+end
+
+
+
+function create_grids_externals(grids::Dict)::Dict
+    OUTPUTgrids = Dict()
+    for (material, mat) in grids
+        str = ""
+        for cont1 in eachindex(mat)
+            for cont2 in eachindex(mat[1])
+                for cont3 in eachindex(mat[1][1])
+                    # se il brick esiste e si affaccia su una superficie, lo aggiungiamo alla griglia
+                    if mat[cont1][cont2][cont3]
+                        if brick_is_on_surface(CartesianIndex(cont1, cont2, cont3), grids, material)
+                            str = str * "$cont1-$cont2-$cont3\$"
+                        end
+                    end
+                end
+            end
+        end
+        OUTPUTgrids[material] = str[1:end-1]
+    end
+    return OUTPUTgrids
+end
+
 
 function doMeshing(dictData::Dict, client=nothing)
+    result = Dict()
     meshes = Dict()
     for geometry in Array{Any}(dictData["STLList"])
         #@assert geometry isa Dict
@@ -214,11 +275,11 @@ function doMeshing(dictData::Dict, client=nothing)
     quantum_x, quantum_y, quantum_z = dictData["quantum"]
 
     if (geometry_x_bound < quantum_x)
-        return Dict("x" => "too large", "max_x" => geometry_x_bound)
+        result = Dict("x" => "too large", "max_x" => geometry_x_bound)
     elseif (geometry_y_bound < quantum_y)
-        return Dict("y" => "too large", "max_y" => geometry_y_bound)
+        result = Dict("y" => "too large", "max_y" => geometry_y_bound)
     elseif (geometry_z_bound < quantum_z)
-        return Dict("z" => "too large", "max_z" => geometry_z_bound)
+        result = Dict("z" => "too large", "max_z" => geometry_z_bound)
     else
         # quantum_x, quantum_y, quantum_z = 1, 1e-2, 1e-2 #per Test 1
         # # quantum_x, quantum_y, quantum_z = 1e-1, 1, 1e-2  # per Test 2
@@ -283,11 +344,22 @@ function doMeshing(dictData::Dict, client=nothing)
             send(client, "Computing completed")
         end
         mesh_result["mesh_is_valid"] = is_mesh_valid(mesh_result["mesher_matrices"], client)
-        if !isnothing(client)
-            close(client)
+
+        if (mesh_result["mesh_is_valid"]["valid"])
+            externalGrids = Dict(
+                "externalGrids" => create_grids_externals(mesh_result["mesher_matrices"]),
+                "origin" => "$(mesh_result["origin"]["origin_x"])-$(mesh_result["origin"]["origin_y"])-$(mesh_result["origin"]["origin_z"])",
+                "n_cells" => "$(mesh_result["n_cells"]["n_cells_x"])-$(mesh_result["n_cells"]["n_cells_y"])-$(mesh_result["n_cells"]["n_cells_z"])",
+                # ricordarsi di dividere per 1000 la cell_size quando la importi su esymia, così che il meshedElement la ridivida, per il solito problema di visualizzazione strano.
+                "cell_size" => "$(mesh_result["cell_size"]["cell_size_x"])-$(mesh_result["cell_size"]["cell_size_y"])-$(mesh_result["cell_size"]["cell_size_z"])"
+            )
         end
-        return mesh_result
+        result = Dict("mesh" => mesh_result, "grids" => externalGrids, "isValid" => mesh_result["mesh_is_valid"]["valid"])
     end
+    if !isnothing(client)
+        close(client)
+    end
+    return result
 end
 
 function quantumAdvice(mesherInput::Dict)

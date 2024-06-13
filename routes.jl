@@ -23,7 +23,7 @@ listen(server, :client) do client
     end
   end
   route("/meshing", method="POST") do
-    result = doMeshing(jsonpayload())
+    result = doMeshing(jsonpayload(), client)
     if result["isValid"] == true
       (meshPath, gridsPath) = saveMeshAndGrids(jsonpayload()["fileName"], result)
       return JSON.json(Dict("mesh" => meshPath, "grids" => gridsPath, "isValid" => result["mesh"]["mesh_is_valid"], "isStopped" => false))

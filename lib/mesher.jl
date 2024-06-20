@@ -156,18 +156,17 @@ function is_brick_valid(brick_coords::CartesianIndex, mesher_matrices::Dict, mat
     return Dict("valid" => true, "stopped" => false)
 end
 
-function is_mesh_valid(mesher_matrices::Dict, client)
+function is_mesh_valid(mesher_matrices::Dict, id::String, chan)
     for material in keys(mesher_matrices)
         checkLength = length(mesher_matrices[material]) * length(mesher_matrices[material][1]) * length(mesher_matrices[material][1][1])
-        if !isnothing(client)
-            send(client, "length:" * string(checkLength))
+        if !isnothing(chan)
+            publish_data(Dict("length" => checkLength, "id" => id), "mesher_feedback", chan)
         end
-
         index = 1
         for brick_coords in CartesianIndices((1:length(mesher_matrices[material]), 1:length(mesher_matrices[material][1]), 1:length(mesher_matrices[material][1][1])))
             if index % ceil(checkLength / 100) == 0
-                if !isnothing(client)
-                    send(client, index)
+                if !isnothing(chan)
+                    publish_data(Dict("index" => index, "id" => id), "mesher_feedback", chan)
                 end
             end
             if length(stopComputation) > 0
@@ -247,7 +246,7 @@ function create_grids_externals(grids::Dict)::Dict
 end
 
 
-function doMeshing(dictData::Dict, client=nothing)
+function doMeshing(dictData::Dict, id::String, chan=nothing)
     result = Dict()
     meshes = Dict()
     for geometry in Array{Any}(dictData["STLList"])
@@ -274,13 +273,13 @@ function doMeshing(dictData::Dict, client=nothing)
     # assert type(dictData['quantum'])==list
     quantum_x, quantum_y, quantum_z = dictData["quantum"]
 
-    if (geometry_x_bound < quantum_x)
-        result = Dict("x" => "too large", "max_x" => geometry_x_bound)
-    elseif (geometry_y_bound < quantum_y)
-        result = Dict("y" => "too large", "max_y" => geometry_y_bound)
-    elseif (geometry_z_bound < quantum_z)
-        result = Dict("z" => "too large", "max_z" => geometry_z_bound)
-    else
+    # if (geometry_x_bound < quantum_x)
+    #     result = Dict("x" => "too large", "max_x" => geometry_x_bound)
+    # elseif (geometry_y_bound < quantum_y)
+    #     result = Dict("y" => "too large", "max_y" => geometry_y_bound)
+    # elseif (geometry_z_bound < quantum_z)
+    #     result = Dict("z" => "too large", "max_z" => geometry_z_bound)
+    # else
         # quantum_x, quantum_y, quantum_z = 1, 1e-2, 1e-2 #per Test 1
         # # quantum_x, quantum_y, quantum_z = 1e-1, 1, 1e-2  # per Test 2
         # # quantum_x, quantum_y, quantum_z = 1e-1, 1e-1, 1e-2  # per Test 3
@@ -289,76 +288,69 @@ function doMeshing(dictData::Dict, client=nothing)
 
         #print("QUANTA:",quantum_x, quantum_y, quantum_z)
 
-        n_of_cells_x = ceil(Int, geometry_x_bound / quantum_x)
-        n_of_cells_y = ceil(Int, geometry_y_bound / quantum_y)
-        n_of_cells_z = ceil(Int, geometry_z_bound / quantum_z)
+    n_of_cells_x = ceil(Int, geometry_x_bound / quantum_x)
+    n_of_cells_y = ceil(Int, geometry_y_bound / quantum_y)
+    n_of_cells_z = ceil(Int, geometry_z_bound / quantum_z)
 
 
 
-        #print("GRID:",n_of_cells_x, n_of_cells_y, n_of_cells_z)
+    #print("GRID:",n_of_cells_x, n_of_cells_y, n_of_cells_z)
 
-        cell_size_x, cell_size_y, cell_size_z = find_sizes(n_of_cells_x, n_of_cells_y, n_of_cells_z, geometry_data_object)
-        #precision = 0.1
-        #print("CELL SIZE AFTER ADJUSTEMENTS:",(cell_size_x), (cell_size_y), (cell_size_z))
-        # if __debug__:
+    cell_size_x, cell_size_y, cell_size_z = find_sizes(n_of_cells_x, n_of_cells_y, n_of_cells_z, geometry_data_object)
+    #precision = 0.1
+    #print("CELL SIZE AFTER ADJUSTEMENTS:",(cell_size_x), (cell_size_y), (cell_size_z))
+    # if __debug__:
 
-        #     for size,quantum in zip([cell_size_x,cell_size_y,cell_size_z],[quantum_x,quantum_y,quantum_z]):
-        #         print(abs(size*(1/precision) - quantum),precision)
-        #         assert abs(size*(1/precision) - quantum)<=precision
-
-
-        mesher_output = fill(false, (length(dictData["STLList"]), n_of_cells_x, n_of_cells_y, n_of_cells_z))
-
-        mapping_ids_to_materials = Dict()
-
-        counter_stl_files = 1
-        for (material, value) in meshes
-            #@assert meshes[mesh_id] isa Mesh
-            mesher_output[counter_stl_files, :, :, :] = voxelize(n_of_cells_x, n_of_cells_y, n_of_cells_z, value["mesh"], geometry_data_object)
-            #mapping dei materiali su id e impostazione priorità per i conduttori in overlapping.
-            mapping_ids_to_materials[counter_stl_files] = Dict("material" => material, "toKeep" => (value["conductivity"] != 0.0) ? true : false)
-            counter_stl_files += 1
-        end
+    #     for size,quantum in zip([cell_size_x,cell_size_y,cell_size_z],[quantum_x,quantum_y,quantum_z]):
+    #         print(abs(size*(1/precision) - quantum),precision)
+    #         assert abs(size*(1/precision) - quantum)<=precision
 
 
-        solve_overlapping(n_of_cells_x, n_of_cells_y, n_of_cells_z, mapping_ids_to_materials, mesher_output)
+    mesher_output = fill(false, (length(dictData["STLList"]), n_of_cells_x, n_of_cells_y, n_of_cells_z))
 
-        origin_x = geometry_data_object["meshXmin"] * 1e-3
-        origin_y = geometry_data_object["meshYmin"] * 1e-3
-        origin_z = geometry_data_object["meshZmin"] * 1e-3
+    mapping_ids_to_materials = Dict()
 
-
-        # assert(isinstance(mesher_output, np.ndarray))
-        # @assert cell_size_x isa Float64
-        # @assert cell_size_y isa Float64
-        # @assert cell_size_z isa Float64
-        # @assert origin_x isa Float64
-        # @assert origin_y isa Float64
-        # @assert origin_z isa Float64
-
-        # Writing to data.json
-        json_file_name = "outputMesher.json"
-        mesh_result = dump_json_data(json_file_name, origin_x, origin_y, origin_z, cell_size_x, cell_size_y, cell_size_z,
-            n_of_cells_x, n_of_cells_y, n_of_cells_z, mesher_output, mapping_ids_to_materials)
-        if !isnothing(client)
-            send(client, "Computing completed")
-        end
-        mesh_result["mesh_is_valid"] = is_mesh_valid(mesh_result["mesher_matrices"], client)
-
-        if (mesh_result["mesh_is_valid"]["valid"])
-            externalGrids = Dict(
-                "externalGrids" => create_grids_externals(mesh_result["mesher_matrices"]),
-                "origin" => "$(mesh_result["origin"]["origin_x"])-$(mesh_result["origin"]["origin_y"])-$(mesh_result["origin"]["origin_z"])",
-                "n_cells" => "$(mesh_result["n_cells"]["n_cells_x"])-$(mesh_result["n_cells"]["n_cells_y"])-$(mesh_result["n_cells"]["n_cells_z"])",
-                # ricordarsi di dividere per 1000 la cell_size quando la importi su esymia, così che il meshedElement la ridivida, per il solito problema di visualizzazione strano.
-                "cell_size" => "$(mesh_result["cell_size"]["cell_size_x"])-$(mesh_result["cell_size"]["cell_size_y"])-$(mesh_result["cell_size"]["cell_size_z"])"
-            )
-        end
-        result = Dict("mesh" => mesh_result, "grids" => externalGrids, "isValid" => mesh_result["mesh_is_valid"]["valid"])
+    counter_stl_files = 1
+    for (material, value) in meshes
+        #@assert meshes[mesh_id] isa Mesh
+        mesher_output[counter_stl_files, :, :, :] = voxelize(n_of_cells_x, n_of_cells_y, n_of_cells_z, value["mesh"], geometry_data_object)
+        #mapping dei materiali su id e impostazione priorità per i conduttori in overlapping.
+        mapping_ids_to_materials[counter_stl_files] = Dict("material" => material, "toKeep" => (value["conductivity"] != 0.0) ? true : false)
+        counter_stl_files += 1
     end
-    if !isnothing(client)
-        close(client)
+
+
+    solve_overlapping(n_of_cells_x, n_of_cells_y, n_of_cells_z, mapping_ids_to_materials, mesher_output)
+
+    origin_x = geometry_data_object["meshXmin"] * 1e-3
+    origin_y = geometry_data_object["meshYmin"] * 1e-3
+    origin_z = geometry_data_object["meshZmin"] * 1e-3
+
+
+    # assert(isinstance(mesher_output, np.ndarray))
+    # @assert cell_size_x isa Float64
+    # @assert cell_size_y isa Float64
+    # @assert cell_size_z isa Float64
+    # @assert origin_x isa Float64
+    # @assert origin_y isa Float64
+    # @assert origin_z isa Float64
+
+    # Writing to data.json
+    json_file_name = "outputMesher.json"
+    mesh_result = dump_json_data(json_file_name, origin_x, origin_y, origin_z, cell_size_x, cell_size_y, cell_size_z,
+        n_of_cells_x, n_of_cells_y, n_of_cells_z, mesher_output, mapping_ids_to_materials)
+    mesh_result["mesh_is_valid"] = is_mesh_valid(mesh_result["mesher_matrices"], id, chan)
+    if (mesh_result["mesh_is_valid"]["valid"])
+        externalGrids = Dict(
+            "externalGrids" => create_grids_externals(mesh_result["mesher_matrices"]),
+            "origin" => "$(mesh_result["origin"]["origin_x"])-$(mesh_result["origin"]["origin_y"])-$(mesh_result["origin"]["origin_z"])",
+            "n_cells" => "$(mesh_result["n_cells"]["n_cells_x"])-$(mesh_result["n_cells"]["n_cells_y"])-$(mesh_result["n_cells"]["n_cells_z"])",
+            # ricordarsi di dividere per 1000 la cell_size quando la importi su esymia, così che il meshedElement la ridivida, per il solito problema di visualizzazione strano.
+            "cell_size" => "$(mesh_result["cell_size"]["cell_size_x"])-$(mesh_result["cell_size"]["cell_size_y"])-$(mesh_result["cell_size"]["cell_size_z"])"
+        )
     end
+    result = Dict("mesh" => mesh_result, "grids" => externalGrids, "isValid" => mesh_result["mesh_is_valid"]["valid"])
+    #end
     return result
 end
 

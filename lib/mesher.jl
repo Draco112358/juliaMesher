@@ -308,29 +308,16 @@ function doMeshing(dictData::Dict, id::String, chan=nothing)
 
     mesher_output = fill(false, (length(dictData["STLList"]), n_of_cells_x, n_of_cells_y, n_of_cells_z))
 
-        mapping_ids_to_materials = Dict()
-        # orderedMeshes = []
-        # for (material, value) in meshes
-        #     if  (value["conductivity"] != 0.0)
-        #         pushfirst!(orderedMeshes, [material, value])
-        #     else
-        #         push!(orderedMeshes, [material, value])
-        #     end
-        # end
-        # for (index, value) in pairs(orderedMeshes)
-        #     #@assert meshes[mesh_id] isa Mesh
-        #     mesher_output[index, :, :, :] = voxelize(n_of_cells_x, n_of_cells_y, n_of_cells_z, value[2]["mesh"], geometry_data_object)
-        #     #mapping dei materiali su id e impostazione priorità per i conduttori in overlapping.
-        #     mapping_ids_to_materials[index] = Dict("material" => value[1], "toKeep" => (value[2]["conductivity"] != 0.0) ? true : false)
-        # end
-        counter_stl_files = 1
-        for (material, value) in meshes
-            #@assert meshes[mesh_id] isa Mesh
-            mesher_output[counter_stl_files, :, :, :] = voxelize(n_of_cells_x, n_of_cells_y, n_of_cells_z, value["mesh"], geometry_data_object)
-            #mapping dei materiali su id e impostazione priorità per i conduttori in overlapping.
-            mapping_ids_to_materials[counter_stl_files] = Dict("material" => material, "toKeep" => (value["conductivity"] != 0.0) ? true : false)
-            counter_stl_files += 1
-        end
+    mapping_ids_to_materials = Dict()
+
+    counter_stl_files = 1
+    for (material, value) in meshes
+        #@assert meshes[mesh_id] isa Mesh
+        mesher_output[counter_stl_files, :, :, :] = voxelize(n_of_cells_x, n_of_cells_y, n_of_cells_z, value["mesh"], geometry_data_object)
+        #mapping dei materiali su id e impostazione priorità per i conduttori in overlapping.
+        mapping_ids_to_materials[counter_stl_files] = Dict("material" => material, "toKeep" => (value["conductivity"] != 0.0) ? true : false)
+        counter_stl_files += 1
+    end
 
 
     solve_overlapping(n_of_cells_x, n_of_cells_y, n_of_cells_z, mapping_ids_to_materials, mesher_output)

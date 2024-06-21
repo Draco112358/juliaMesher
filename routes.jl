@@ -104,7 +104,7 @@ function receive()
               println(data["message"])
               if (data["message"] == "compute suggested quantum")
                 res = quantumAdvice(data["body"])
-                result = Dict("body" => JSON.json(res), "id" => data["body"]["id"])
+                result = Dict("quantum" => JSON.json(res), "id" => data["body"]["id"])
                 publish_data(result, "mesh_advices", chan)
               elseif data["message"] == "compute mesh"
                 result = doMeshing(data["body"], data["body"]["fileName"], chan)
